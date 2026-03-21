@@ -10,12 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Input from "../../components/Input";
 import Button from "../../components/Button";
-import { Colors, Shadows } from "../../theme/colors";
+import SectionCard from "../../components/SectionCard";
+import { Colors, Radius, Shadows, Spacing } from "../../theme/colors";
 
 const { width } = Dimensions.get("window");
 
@@ -25,6 +27,9 @@ export default function CalculatorScreen({ onBack }) {
   const [overtimeHours, setOvertimeHours] = useState("0");
   const [nightHours, setNightHours] = useState("0");
   const [months, setMonths] = useState("12");
+  const [startTime, setStartTime] = useState("08:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [breakMinutes, setBreakMinutes] = useState("60");
   const [result, setResult] = useState(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -37,12 +42,29 @@ export default function CalculatorScreen({ onBack }) {
     }).start();
   }, []);
 
+  const parseHourToMinutes = (value) => {
+    const s = String(value || "").trim();
+    if (!s) return null;
+    const parts = s.split(":");
+    const h = parseInt(parts[0], 10);
+    let m = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+    if (Number.isNaN(h)) return null;
+    if (Number.isNaN(m)) m = 0;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+  };
+
   const calculate = () => {
-    const base = parseFloat(salary) || 0;
+    const salaryBase = parseFloat(String(salary).replace(",", ".")) || 0;
     const extra = parseFloat(overtimeHours) || 0;
     const night = parseFloat(nightHours) || 0;
 
     if (calcType === "payroll") {
+      if (salaryBase <= 0) {
+        Alert.alert("Atenção", "Informe um salário base maior que zero.");
+        return;
+      }
+      const base = salaryBase;
       const hourlyRate = base / 220;
       const overtimeValue = extra * hourlyRate * 1.5;
       const nightValue = night * hourlyRate * 0.2;
@@ -81,10 +103,16 @@ export default function CalculatorScreen({ onBack }) {
           { label: "Líquido", value: netSalary, bold: true, highlight: true },
         ],
       });
-    } else {
-      const m = parseInt(months) || 12;
-      const vacation = ((base + base / 3) * (m % 12)) / 12;
-      const thirteenth = (base / 12) * (m % 12);
+    } else if (calcType === "termination") {
+      const base = parseFloat(String(salary).replace(",", ".")) || 0;
+      if (base <= 0) {
+        Alert.alert("Atenção", "Informe um salário base maior que zero.");
+        return;
+      }
+      const m = Math.max(1, Math.min(240, parseInt(months, 10) || 12));
+      const monthsInCycle = ((m - 1) % 12) + 1;
+      const vacation = ((base + base / 3) * monthsInCycle) / 12;
+      const thirteenth = (base / 12) * monthsInCycle;
       const fgtsTotal = base * 0.08 * m;
       const noticePay = base;
       const fgtsPenalty = fgtsTotal * 0.4;
@@ -92,13 +120,49 @@ export default function CalculatorScreen({ onBack }) {
 
       setResult({
         rows: [
-          { label: "Férias", value: vacation },
-          { label: "13º", value: thirteenth },
+          { label: "Férias (prop. ciclo)", value: vacation },
+          { label: "13º (prop. ciclo)", value: thirteenth },
           { label: "FGTS", value: fgtsTotal },
           { label: "Aviso", value: noticePay },
           { label: "Multa 40%", value: fgtsPenalty },
           { divider: true },
           { label: "Total", value: total, bold: true, highlight: true },
+        ],
+        message:
+          "Estimativa simplificada para referência. Férias e 13º usam o mês atual do ciclo (1–12 meses). Consulte um profissional para valores oficiais.",
+      });
+    } else {
+      const start = parseHourToMinutes(startTime);
+      const end = parseHourToMinutes(endTime);
+      const rest = Math.max(0, parseInt(breakMinutes, 10) || 0);
+
+      if (start === null || end === null) {
+        setResult({
+          error: true,
+          message: "Use o formato HH:MM (ex.: 08:00 ou 8:30).",
+        });
+        return;
+      }
+
+      let totalMinutes = end - start;
+      if (totalMinutes < 0) totalMinutes += 24 * 60;
+      const workedMinutes = Math.max(0, totalMinutes - rest);
+      const workedHours = Math.round((workedMinutes / 60) * 100) / 100;
+      const overtime = Math.max(0, workedHours - 8);
+
+      setResult({
+        rows: [
+          { label: "Entrada", value: 0, custom: startTime },
+          { label: "Saída", value: 0, custom: endTime },
+          { label: "Intervalo", value: 0, custom: `${rest} min` },
+          { divider: true },
+          { label: "Horas do dia", value: workedHours, bold: true },
+          {
+            label: "Horas extras do dia",
+            value: overtime,
+            bold: true,
+            highlight: true,
+          },
         ],
       });
     }
@@ -119,7 +183,12 @@ export default function CalculatorScreen({ onBack }) {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View style={{ opacity: fadeAnim }}>
-              <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+              <TouchableOpacity
+                onPress={() => onBack?.()}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Voltar"
+              >
                 <Ionicons
                   name="arrow-back"
                   size={22}
@@ -131,7 +200,8 @@ export default function CalculatorScreen({ onBack }) {
               <Text style={styles.subtitle}>LC 150/2015</Text>
 
               {/* Toggle */}
-              <View style={[styles.toggle, Shadows.small]}>
+              <SectionCard title="Tipo de cálculo" style={styles.toggleWrapper}>
+                <View style={styles.toggle}>
                 <TouchableOpacity
                   style={[
                     styles.toggleBtn,
@@ -184,10 +254,35 @@ export default function CalculatorScreen({ onBack }) {
                     Rescisão
                   </Text>
                 </TouchableOpacity>
-              </View>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleBtn,
+                    calcType === "daily" && styles.toggleActive,
+                  ]}
+                  onPress={() => {
+                    setCalcType("daily");
+                    setResult(null);
+                  }}
+                >
+                  <Ionicons
+                    name="calendar-number-outline"
+                    size={16}
+                    color={calcType === "daily" ? "#FFF" : Colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      calcType === "daily" && { color: "#FFF" },
+                    ]}
+                  >
+                    Dia
+                  </Text>
+                </TouchableOpacity>
+                </View>
+              </SectionCard>
 
               {/* Form */}
-              <View style={[styles.form, Shadows.medium]}>
+              <SectionCard>
                 <Input
                   label="Salário (R$)"
                   icon="wallet-outline"
@@ -212,7 +307,7 @@ export default function CalculatorScreen({ onBack }) {
                       keyboardType="numeric"
                     />
                   </>
-                ) : (
+                ) : calcType === "termination" ? (
                   <Input
                     label="Meses"
                     icon="calendar-outline"
@@ -220,57 +315,91 @@ export default function CalculatorScreen({ onBack }) {
                     onChangeText={setMonths}
                     keyboardType="numeric"
                   />
+                ) : (
+                  <>
+                    <Input
+                      label="Entrada (HH:MM)"
+                      icon="log-in-outline"
+                      value={startTime}
+                      onChangeText={setStartTime}
+                      placeholder="08:00"
+                    />
+                    <Input
+                      label="Saída (HH:MM)"
+                      icon="log-out-outline"
+                      value={endTime}
+                      onChangeText={setEndTime}
+                      placeholder="17:00"
+                    />
+                    <Input
+                      label="Intervalo (min)"
+                      icon="pause-outline"
+                      value={breakMinutes}
+                      onChangeText={setBreakMinutes}
+                      keyboardType="numeric"
+                    />
+                  </>
                 )}
                 <Button
                   title="Calcular"
                   icon="calculator-outline"
                   onPress={calculate}
                 />
-              </View>
+              </SectionCard>
 
               {/* Result */}
               {result && (
-                <View style={[styles.resultCard, Shadows.medium]}>
-                  <Text style={styles.resultTitle}>Resultado</Text>
-                  {result.rows.map((row, i) => {
-                    if (row.divider)
-                      return <View key={i} style={styles.divider} />;
-                    return (
-                      <View key={i} style={styles.resultRow}>
-                        <Text
-                          style={[
-                            styles.resultLabel,
-                            row.bold && {
-                              fontWeight: "600",
-                              color: Colors.textPrimary,
-                            },
-                          ]}
-                        >
-                          {row.label}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.resultValue,
-                            row.bold && { fontWeight: "700" },
-                            row.color && { color: row.color },
-                            row.muted && { color: Colors.textLight },
-                            row.highlight && {
-                              color: Colors.orange,
-                              fontSize: 16,
-                              fontWeight: "800",
-                            },
-                          ]}
-                        >
-                          {row.prefix || ""}
-                          {fmt(row.value)}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
+                <SectionCard title="Resultado">
+                  {result.error ? (
+                    <Text style={styles.errorMessage}>{result.message}</Text>
+                  ) : (
+                    <>
+                      {result.rows.map((row, i) => {
+                        if (row.divider)
+                          return <View key={i} style={styles.divider} />;
+                        return (
+                          <View key={i} style={styles.resultRow}>
+                            <Text
+                              style={[
+                                styles.resultLabel,
+                                row.bold && {
+                                  fontWeight: "600",
+                                  color: Colors.textPrimary,
+                                },
+                              ]}
+                            >
+                              {row.label}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultValue,
+                                row.bold && { fontWeight: "700" },
+                                row.color && { color: row.color },
+                                row.muted && { color: Colors.textLight },
+                                row.highlight && {
+                                  color: Colors.orange,
+                                  fontSize: 16,
+                                  fontWeight: "800",
+                                },
+                              ]}
+                            >
+                              {row.prefix || ""}
+                              {row.custom != null && row.custom !== ""
+                                ? row.custom
+                                : fmt(row.value)}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {!!result.message && (
+                        <Text style={styles.noteMessage}>{result.message}</Text>
+                      )}
+                    </>
+                  )}
+                </SectionCard>
               )}
 
-              <View style={{ height: 30 }} />
+              <View style={{ height: Spacing.xl }} />
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -281,15 +410,15 @@ export default function CalculatorScreen({ onBack }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.white },
-  content: { paddingHorizontal: 20, paddingTop: 16 },
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   backBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     backgroundColor: Colors.white,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: Spacing.md,
     ...Shadows.small,
   },
   title: {
@@ -298,21 +427,19 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginBottom: 2,
   },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, marginBottom: 20 },
+  subtitle: { fontSize: 14, color: Colors.textSecondary, marginBottom: Spacing.lg },
+  toggleWrapper: { marginBottom: Spacing.md },
   toggle: {
     flexDirection: "row",
-    backgroundColor: Colors.white,
-    borderRadius: 14,
+    backgroundColor: Colors.gray100,
+    borderRadius: Radius.sm,
     padding: 4,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
   },
   toggleBtn: {
     flex: 1,
     flexDirection: "row",
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.sm,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
@@ -320,34 +447,26 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: Colors.orange },
   toggleActiveTeal: { backgroundColor: Colors.teal },
   toggleText: { fontSize: 14, fontWeight: "600", color: Colors.textSecondary },
-  form: {
-    backgroundColor: Colors.white,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-  },
-  resultCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-  },
-  resultTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    marginBottom: 14,
-  },
-  divider: { height: 1, backgroundColor: Colors.gray100, marginVertical: 10 },
+  divider: { height: 1, backgroundColor: Colors.gray100, marginVertical: Spacing.sm },
   resultRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: Spacing.sm,
   },
   resultLabel: { fontSize: 14, color: Colors.textSecondary },
   resultValue: { fontSize: 14, color: Colors.textPrimary, fontWeight: "500" },
+  errorMessage: {
+    marginTop: 4,
+    color: Colors.error,
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  noteMessage: {
+    marginTop: 8,
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
 });

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Button from "../../components/Button";
-import { Colors } from "../../theme/colors";
+import { Colors, Spacing } from "../../theme/colors";
 
 const { width, height } = Dimensions.get("window");
 
@@ -119,7 +119,7 @@ export default function WelcomeScreen({ onGoToLogin, onGoToRegister }) {
               title="Vamos começar"
               iconRight="arrow-forward"
               onPress={onGoToRegister}
-              style={{ marginBottom: 12 }}
+              style={{ marginBottom: Spacing.sm }}
             />
             <Button
               title="Já tenho conta"
@@ -163,14 +163,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 28,
+    paddingHorizontal: Spacing.xl,
   },
   logoBox: {
-    marginBottom: height * 0.04,
+    marginBottom: height * 0.05,
   },
   logo: {
-    width: width * 0.5,
-    height: width * 0.25,
+    width: width * 0.75,
+    height: width * 0.4,
   },
   textBox: {
     marginBottom: height * 0.06,

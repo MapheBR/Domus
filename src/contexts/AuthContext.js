@@ -5,6 +5,7 @@ import {
   registerUser,
   logoutUser,
   getUserData,
+  subscribeUserData,
 } from "../config/firebase";
 
 const AuthContext = createContext({});
@@ -17,21 +18,36 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthChange(async (firebaseUser) => {
+    let unsubFirestore = null;
+
+    const unsubscribe = onAuthChange((firebaseUser) => {
+      if (unsubFirestore) {
+        unsubFirestore();
+        unsubFirestore = null;
+      }
+
       if (firebaseUser) {
         setUser(firebaseUser);
-        const result = await getUserData(firebaseUser.uid);
-        if (result.success) {
-          setUserData(result.data);
-        }
+        setLoading(true);
+        unsubFirestore = subscribeUserData(firebaseUser.uid, (result) => {
+          if (result.success) {
+            setUserData(result.data);
+          } else {
+            setUserData(null);
+          }
+          setLoading(false);
+        });
       } else {
         setUser(null);
         setUserData(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (unsubFirestore) unsubFirestore();
+    };
   }, []);
 
   const login = async (email, password) => {
@@ -39,14 +55,26 @@ export function AuthProvider({ children }) {
     return result;
   };
 
-  const register = async (email, password, name, role) => {
-    const result = await registerUser(email, password, name, role);
+  const register = async (email, password, name, role, employerEmail) => {
+    const result = await registerUser(
+      email,
+      password,
+      name,
+      role,
+      employerEmail,
+    );
     return result;
   };
 
   const logout = async () => {
     const result = await logoutUser();
     return result;
+  };
+
+  const refreshUserData = async () => {
+    if (!user?.uid) return;
+    const result = await getUserData(user.uid);
+    if (result.success) setUserData(result.data);
   };
 
   return (
@@ -58,6 +86,7 @@ export function AuthProvider({ children }) {
         login,
         register,
         logout,
+        refreshUserData,
         isAuthenticated: !!user,
       }}
     >

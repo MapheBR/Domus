@@ -9,9 +9,30 @@ const Stack = createStackNavigator();
 export default function AuthNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Welcome" component={WelcomeScreen} />
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Welcome">
+        {({ navigation }) => (
+          <WelcomeScreen
+            onGoToLogin={() => navigation.navigate("Login")}
+            onGoToRegister={() => navigation.navigate("Register")}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Login">
+        {({ navigation }) => (
+          <LoginScreen
+            onGoToRegister={() => navigation.navigate("Register")}
+            onLogin={() => navigation.replace("Welcome")}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Register">
+        {({ navigation }) => (
+          <RegisterScreen
+            onGoToLogin={() => navigation.navigate("Login")}
+            onRegister={() => navigation.replace("Welcome")}
+          />
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }

@@ -12,15 +12,20 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import Button from "../../components/Button";
-import { Colors, Shadows } from "../../theme/colors";
+import { Colors, Radius, Shadows } from "../../theme/colors";
 import { useAuth } from "../../contexts/AuthContext";
-import { registerCheckIn } from "../../config/firebase";
+import {
+  getLastCheckIn,
+  registerCheckIn,
+  getWorkLocation,
+  logCheckInAttempt,
+} from "../../config/firebase";
+import { isWithinWorkLocation } from "../../utils/geolocation";
 
 const { width } = Dimensions.get("window");
 
 export default function CheckInScreen({ onBack }) {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(true);
@@ -29,6 +34,24 @@ export default function CheckInScreen({ onBack }) {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const formatCheckTime = (item) => {
+    if (!item) return "--:--";
+    if (item.time) return item.time;
+    if (item.localTime) {
+      return new Date(item.localTime).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    if (item.timestamp?.toDate) {
+      return item.timestamp.toDate().toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    return "--:--";
+  };
 
   useEffect(() => {
     // Animação de entrada
@@ -74,8 +97,19 @@ export default function CheckInScreen({ onBack }) {
       setLocationLoading(false);
     })();
 
+    (async () => {
+      if (!user?.uid) return;
+      const lastResult = await getLastCheckIn(user.uid);
+      if (lastResult.success && lastResult.data?.type) {
+        setLastCheckIn(lastResult.data);
+        setCheckType(lastResult.data.type === "entrada" ? "saida" : "entrada");
+      } else if (!lastResult.success) {
+        Alert.alert("Aviso", lastResult.error);
+      }
+    })();
+
     return () => pulse.stop();
-  }, []);
+  }, [user?.uid]);
 
   const handleCheckIn = async () => {
     if (!location) {
@@ -85,21 +119,56 @@ export default function CheckInScreen({ onBack }) {
 
     setLoading(true);
 
-    const result = await registerCheckIn(user.uid, checkType, location);
+    const employerId = userData?.employerId || null;
+    const employeeName = userData?.name || user?.displayName || user?.email || null;
+
+    if (employerId) {
+      const locResult = await getWorkLocation(employerId);
+      if (locResult.success && locResult.data) {
+        const { allowed, distance, radius } = isWithinWorkLocation(location, locResult.data);
+        if (!allowed) {
+          await logCheckInAttempt(user.uid, {
+            employerId,
+            employeeName,
+            type: checkType,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            distanceMeters: distance,
+            radiusMeters: radius,
+            reason: "outside_area",
+          });
+          setLoading(false);
+          Alert.alert(
+            "📍 Fora do local autorizado",
+            `Você está a aproximadamente ${Math.round(distance)} m do local de trabalho (máx. ${radius} m).\n\nAproxime-se do local cadastrado para registrar o ponto.`,
+            [{ text: "Entendi" }],
+          );
+          return;
+        }
+      }
+    }
+
+    const result = await registerCheckIn(user.uid, checkType, location, {
+      employerId,
+      employeeName,
+    });
 
     setLoading(false);
 
     if (result.success) {
+      const now = new Date();
       setLastCheckIn({
         type: checkType,
-        time: new Date().toLocaleTimeString("pt-BR", {
+        localTime: now.toISOString(),
+        time: now.toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
         }),
       });
+      setCheckType(checkType === "entrada" ? "saida" : "entrada");
       Alert.alert(
         "✅ Ponto Registrado!",
-        `${checkType === "entrada" ? "Entrada" : "Saída"} registrada com sucesso às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
+        `${checkType === "entrada" ? "Entrada" : "Saída"} registrada com sucesso às ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
       );
     } else {
       Alert.alert("Erro", result.error);
@@ -125,6 +194,14 @@ export default function CheckInScreen({ onBack }) {
 
           {/* Content */}
           <View style={styles.content}>
+            {userData?.role === "employer" && (
+              <View style={[styles.lastCard, Shadows.small, { marginBottom: 16 }]}>
+                <Ionicons name="information-circle" size={20} color={Colors.info} />
+                <Text style={[styles.lastText, { color: Colors.info }]}>
+                  Empregador não registra ponto. Use Equipe e Relatórios.
+                </Text>
+              </View>
+            )}
             {/* Toggle Entrada/Saída */}
             <View style={[styles.toggle, Shadows.small]}>
               <TouchableOpacity
@@ -177,7 +254,7 @@ export default function CheckInScreen({ onBack }) {
             <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
               <TouchableOpacity
                 onPress={handleCheckIn}
-                disabled={loading || locationLoading}
+                disabled={loading || locationLoading || userData?.role === "employer"}
                 activeOpacity={0.9}
               >
                 <LinearGradient
@@ -194,7 +271,9 @@ export default function CheckInScreen({ onBack }) {
                     <>
                       <Ionicons name="finger-print" size={60} color="#FFF" />
                       <Text style={styles.bigButtonText}>
-                        {locationLoading
+                        {userData?.role === "employer"
+                          ? "Disponível apenas para empregado"
+                          : locationLoading
                           ? "Obtendo GPS..."
                           : "Toque para registrar"}
                       </Text>
@@ -215,7 +294,9 @@ export default function CheckInScreen({ onBack }) {
                 <Text style={styles.statusText}>
                   {locationLoading
                     ? "Obtendo localização..."
-                    : "GPS confirmado"}
+                    : location
+                      ? "Localização obtida"
+                      : "Ative a permissão de localização nas configurações"}
                 </Text>
               </View>
               {location && (
@@ -235,7 +316,7 @@ export default function CheckInScreen({ onBack }) {
                   color={Colors.success}
                 />
                 <Text style={styles.lastText}>
-                  Último registro: {lastCheckIn.type} às {lastCheckIn.time}
+                  Último registro: {lastCheckIn.type} às {formatCheckTime(lastCheckIn)}
                 </Text>
               </View>
             )}
@@ -259,7 +340,7 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     backgroundColor: Colors.white,
     justifyContent: "center",
     alignItems: "center",
@@ -270,7 +351,7 @@ const styles = StyleSheet.create({
   toggle: {
     flexDirection: "row",
     backgroundColor: Colors.white,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     padding: 4,
     marginBottom: 40,
     width: "100%",
@@ -281,7 +362,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -306,7 +387,7 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     backgroundColor: Colors.white,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     padding: 16,
     width: "100%",
     marginBottom: 12,
@@ -326,7 +407,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     backgroundColor: Colors.successSoft,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     padding: 14,
     width: "100%",
   },

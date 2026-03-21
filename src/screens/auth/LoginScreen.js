@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   Animated,
   SafeAreaView,
@@ -17,7 +16,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Input from "../../components/Input";
 import Button from "../../components/Button";
-import { Colors, Shadows } from "../../theme/colors";
+import SectionCard from "../../components/SectionCard";
+import { Colors, Radius, Shadows, Spacing } from "../../theme/colors";
 import { useAuth } from "../../contexts/AuthContext";
 
 const { width, height } = Dimensions.get("window");
@@ -53,7 +53,7 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
     if (!validate()) return;
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(email.trim().toLowerCase(), password);
 
     setLoading(false);
 
@@ -86,21 +86,12 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
                 />
               </TouchableOpacity>
 
-              {/* Logo */}
-              <View style={styles.logoBox}>
-                <Image
-                  source={require("../../../assets/logo.png")}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
-              </View>
-
               {/* Header */}
               <Text style={styles.title}>Bem-vindo de volta</Text>
               <Text style={styles.subtitle}>Entre para continuar</Text>
 
               {/* Form */}
-              <View style={[styles.form, Shadows.medium]}>
+              <SectionCard>
                 <Input
                   label="Email"
                   icon="mail-outline"
@@ -130,7 +121,7 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
                   onPress={handleLogin}
                   loading={loading}
                 />
-              </View>
+              </SectionCard>
 
               {/* Divider */}
               <View style={styles.divider}>
@@ -170,24 +161,23 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.white },
-  scroll: { flexGrow: 1, paddingBottom: 20 },
-  container: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
+  scroll: { flexGrow: 1, paddingBottom: Spacing.lg },
+  container: { flex: 1, paddingHorizontal: Spacing.xl, paddingTop: Spacing.md },
   backBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     backgroundColor: Colors.white,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
     ...Shadows.small,
   },
-  logoBox: { alignItems: "center", marginBottom: height * 0.03 },
-  logo: { width: width * 0.35, height: width * 0.18 },
   title: {
     fontSize: width * 0.065,
     fontWeight: "700",
     color: Colors.textPrimary,
+    marginTop: Spacing.lg,
     marginBottom: 4,
   },
   subtitle: {
@@ -195,40 +185,32 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: height * 0.025,
   },
-  form: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-  },
-  forgotBtn: { alignSelf: "flex-end", marginBottom: 20, marginTop: -8 },
+  forgotBtn: { alignSelf: "flex-end", marginBottom: Spacing.lg, marginTop: -8 },
   forgotText: { fontSize: 14, color: Colors.orange, fontWeight: "600" },
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
   },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.gray200 },
-  dividerText: { marginHorizontal: 14, color: Colors.textLight, fontSize: 13 },
+  dividerText: { marginHorizontal: Spacing.md, color: Colors.textLight, fontSize: 13 },
   socialRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 14,
-    marginBottom: 24,
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
   },
   socialBtn: {
     width: 52,
     height: 52,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.white,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.gray100,
   },
-  footer: { flexDirection: "row", justifyContent: "center" },
+  footer: { flexDirection: "row", justifyContent: "center", marginTop: Spacing.sm },
   footerText: { fontSize: 15, color: Colors.textSecondary },
   footerLink: { fontSize: 15, color: Colors.orange, fontWeight: "700" },
 });

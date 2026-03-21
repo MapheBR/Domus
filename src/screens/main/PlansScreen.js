@@ -8,6 +8,7 @@ import {
   Animated,
   SafeAreaView,
   Dimensions,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -64,7 +65,12 @@ export default function PlansScreen({ onBack }) {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={{ opacity: fadeAnim }}>
-            <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+            <TouchableOpacity
+              onPress={() => onBack?.()}
+              style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar"
+            >
               <Ionicons
                 name="arrow-back"
                 size={22}
@@ -135,7 +141,13 @@ export default function PlansScreen({ onBack }) {
             <Button
               title="Começar agora"
               iconRight="arrow-forward"
-              onPress={() => alert("Plano: " + selected)}
+              onPress={() =>
+                Alert.alert(
+                  "Assinatura",
+                  `Plano selecionado: ${PLANS.find((p) => p.id === selected)?.name || selected}.\n\nO pagamento por assinatura ainda não está conectado ao app. Entre em contato com o suporte ou aguarde uma próxima versão.`,
+                  [{ text: "Entendi" }],
+                )
+              }
               style={{ marginTop: 8 }}
             />
 

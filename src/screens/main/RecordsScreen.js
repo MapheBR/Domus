@@ -1,76 +1,81 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Header from "../../components/Header";
+import ScreenState from "../../components/ScreenState";
+import FilterChips from "../../components/FilterChips";
 import { Colors, Shadows } from "../../theme/colors";
+import { useAuth } from "../../contexts/AuthContext";
+import { getCheckIns, getEmployerCheckIns } from "../../config/firebase";
 
-// Mock data
-const MOCK_RECORDS = [
-  {
-    id: "1",
-    type: "check_in",
-    time: "08:02",
-    date: "2026-01-15",
-    employee: "Ana Silva",
-    hash: "a3f2...",
-  },
-  {
-    id: "2",
-    type: "check_out",
-    time: "12:01",
-    date: "2026-01-15",
-    employee: "Ana Silva",
-    hash: "b4e1...",
-  },
-  {
-    id: "3",
-    type: "check_in",
-    time: "13:05",
-    date: "2026-01-15",
-    employee: "Ana Silva",
-    hash: "c5d0...",
-  },
-  {
-    id: "4",
-    type: "check_out",
-    time: "17:00",
-    date: "2026-01-15",
-    employee: "Ana Silva",
-    hash: "d6c9...",
-  },
-  {
-    id: "5",
-    type: "check_in",
-    time: "08:00",
-    date: "2026-01-14",
-    employee: "Ana Silva",
-    hash: "e7b8...",
-  },
-  {
-    id: "6",
-    type: "check_out",
-    time: "17:02",
-    date: "2026-01-14",
-    employee: "Ana Silva",
-    hash: "f8a7...",
-  },
-];
-
-export default function RecordsScreen({ navigation }) {
-  const insets = useSafeAreaInsets();
+export default function RecordsScreen({ onBack }) {
+  const { user, userData } = useAuth();
   const [filter, setFilter] = useState("all");
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const isEmployer = userData?.role === "employer";
 
-  const filteredRecords =
+  const loadData = async () => {
+    if (!user?.uid) return;
+    setLoading(true);
+    setError("");
+    const result = isEmployer
+      ? await getEmployerCheckIns(user.uid)
+      : await getCheckIns(user.uid);
+    if (result.success) {
+      setRecords(result.data || []);
+      setError("");
+    } else {
+      setRecords([]);
+      setError(result.error || "Falha ao carregar registros.");
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      if (!user?.uid || !active) return;
+      setLoading(true);
+      const result = isEmployer
+        ? await getEmployerCheckIns(user.uid)
+        : await getCheckIns(user.uid);
+      if (!active) return;
+      if (result.success) {
+        setRecords(result.data || []);
+        setError("");
+      } else {
+        setRecords([]);
+        setError(result.error || "Falha ao carregar registros.");
+      }
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.uid, isEmployer]);
+
+  const filteredRecords = useMemo(
+    () =>
     filter === "all"
-      ? MOCK_RECORDS
-      : MOCK_RECORDS.filter((r) => r.type === filter);
+      ? records
+      : records.filter((r) => r.type === filter),
+    [records, filter],
+  );
+
+  const parseRecordDate = (item) => {
+    if (item?.localTime) return new Date(item.localTime);
+    if (item?.timestamp?.toDate) return item.timestamp.toDate();
+    return new Date();
+  };
 
   const renderRecord = ({ item }) => (
     <View style={[styles.recordCard, Shadows.small]}>
@@ -79,63 +84,66 @@ export default function RecordsScreen({ navigation }) {
           styles.recordIcon,
           {
             backgroundColor:
-              item.type === "check_in" ? Colors.successSoft : Colors.errorSoft,
+              item.type === "entrada" ? Colors.successSoft : Colors.errorSoft,
           },
         ]}
       >
         <Ionicons
-          name={item.type === "check_in" ? "log-in" : "log-out"}
+          name={item.type === "entrada" ? "log-in" : "log-out"}
           size={20}
-          color={item.type === "check_in" ? Colors.success : Colors.error}
+          color={item.type === "entrada" ? Colors.success : Colors.error}
         />
       </View>
       <View style={styles.recordInfo}>
-        <Text style={styles.recordTime}>{item.time}</Text>
-        <Text style={styles.recordEmployee}>{item.employee}</Text>
+        <Text style={styles.recordTime}>
+          {parseRecordDate(item).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </Text>
+        <Text style={styles.recordEmployee}>
+          {isEmployer ? item.employeeName || "Funcionário" : "Meu registro"}
+        </Text>
         <View style={styles.hashRow}>
           <Ionicons name="shield-checkmark" size={12} color={Colors.teal} />
-          <Text style={styles.hashLabel}>SHA-256: {item.hash}</Text>
+          <Text style={styles.hashLabel}>
+            {parseRecordDate(item).toLocaleDateString("pt-BR")}
+          </Text>
         </View>
       </View>
       <View style={styles.recordType}>
         <Text
           style={[
             styles.recordTypeText,
-            { color: item.type === "check_in" ? Colors.success : Colors.error },
+            { color: item.type === "entrada" ? Colors.success : Colors.error },
           ]}
         >
-          {item.type === "check_in" ? "Entrada" : "Saída"}
+          {item.type === "entrada" ? "Entrada" : "Saída"}
         </Text>
       </View>
     </View>
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <Header title="Registros" subtitle="Histórico de ponto" />
+    <View style={styles.container}>
+      <Header
+        title="Registros"
+        subtitle={isEmployer ? "Pontos da equipe" : "Meu histórico de ponto"}
+        showBack
+        onBack={onBack}
+      />
 
       {/* Filters */}
       <View style={styles.filterRow}>
-        {[
-          { key: "all", label: "Todos" },
-          { key: "check_in", label: "Entradas" },
-          { key: "check_out", label: "Saídas" },
-        ].map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterBtn, filter === f.key && styles.filterActive]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filter === f.key && styles.filterTextActive,
-              ]}
-            >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <FilterChips
+          options={[
+            { label: "Todos", value: "all" },
+            { label: "Entradas", value: "entrada" },
+            { label: "Saídas", value: "saida" },
+          ]}
+          selected={filter}
+          onSelect={setFilter}
+        />
       </View>
 
       <FlatList
@@ -144,6 +152,26 @@ export default function RecordsScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          loading ? (
+            <ScreenState type="loading" title="Carregando registros..." />
+          ) : error ? (
+            <ScreenState
+              type="error"
+              icon="alert-circle-outline"
+              title="Não foi possível carregar"
+              subtitle={error}
+              actionLabel="Tentar novamente"
+              onAction={loadData}
+            />
+          ) : (
+            <ScreenState
+              icon="document-text-outline"
+              title="Nenhum registro encontrado"
+              subtitle="Não existem registros para o filtro selecionado."
+            />
+          )
+        }
       />
     </View>
   );
@@ -152,20 +180,9 @@ export default function RecordsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   filterRow: {
-    flexDirection: "row",
     paddingHorizontal: 20,
     marginBottom: 16,
-    gap: 8,
   },
-  filterBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.white,
-  },
-  filterActive: { backgroundColor: Colors.orange },
-  filterText: { fontSize: 14, fontWeight: "600", color: Colors.textSecondary },
-  filterTextActive: { color: Colors.white },
   recordCard: {
     flexDirection: "row",
     alignItems: "center",

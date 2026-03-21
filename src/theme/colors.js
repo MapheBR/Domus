@@ -137,3 +137,18 @@ export const Typography = {
     lineHeight: 16,
   },
 };
+
+export const Spacing = {
+  xs: 6,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
+};
+
+export const Radius = {
+  sm: 10,
+  md: 14,
+  lg: 18,
+  xl: 20,
+};

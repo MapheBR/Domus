@@ -6,18 +6,21 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Switch,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import UserAvatar from "../../components/UserAvatar";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import Header from "../../components/Header";
 import Card from "../../components/Card";
 import { Colors, Shadows } from "../../theme/colors";
+import Input from "../../components/Input";
+import Button from "../../components/Button";
+import { db } from "../../config/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
 export default function ProfileScreen({ navigation }) {
-  const insets = useSafeAreaInsets();
-  const { user, userData, logout } = useAuth();
+  const { user, userData, logout, refreshUserData } = useAuth();
 
   const handleLogout = () => {
     Alert.alert("Sair", "Deseja sair da sua conta?", [
@@ -26,39 +29,48 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
-  const menuItems = [
-    { icon: "person-outline", label: "Editar Perfil", color: Colors.orange },
-    {
-      icon: "card-outline",
-      label: "Plano e Assinatura",
-      color: Colors.teal,
-      screen: "Plans",
-    },
-    {
-      icon: "notifications-outline",
-      label: "Notificações",
-      color: Colors.info,
-    },
-    {
-      icon: "shield-outline",
-      label: "Privacidade (LGPD)",
-      color: Colors.success,
-    },
-    {
-      icon: "help-circle-outline",
-      label: "Ajuda e Suporte",
-      color: Colors.warning,
-    },
-    {
-      icon: "document-text-outline",
-      label: "Termos de Uso",
-      color: Colors.gray600,
-    },
+  const [activeTab, setActiveTab] = React.useState("editProfile");
+  const [savingProfile, setSavingProfile] = React.useState(false);
+  const [nameDraft, setNameDraft] = React.useState(userData?.name || user?.displayName || "");
+  const [notifyEnabled, setNotifyEnabled] = React.useState(true);
+
+  React.useEffect(() => {
+    setNameDraft(userData?.name || user?.displayName || "");
+  }, [userData?.name, user?.displayName]);
+
+  const tabItems = [
+    { key: "editProfile", icon: "person-outline", label: "Editar Perfil", color: Colors.orange },
+    { key: "notifications", icon: "notifications-outline", label: "Notificações", color: Colors.info },
+    { key: "help", icon: "help-circle-outline", label: "Ajuda e Suporte", color: Colors.warning },
+    { key: "terms", icon: "document-text-outline", label: "Termos de Uso", color: Colors.gray600 },
   ];
 
+  const handleSaveProfile = async () => {
+    const nextName = (nameDraft || "").trim();
+    if (!nextName) {
+      Alert.alert("Atenção", "Informe seu nome.");
+      return;
+    }
+    if (!user?.uid) return;
+
+    setSavingProfile(true);
+    try {
+      await updateDoc(doc(db, "users", user.uid), { name: nextName });
+      await refreshUserData();
+    } catch (e) {
+      Alert.alert("Erro", e?.message || "Não foi possível salvar os dados.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <Header title="Perfil" />
+    <View style={styles.container}>
+      <Header
+        title="Perfil"
+        showBack={navigation.canGoBack?.() ?? false}
+        onBack={() => navigation.goBack()}
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -67,41 +79,33 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile Card */}
         <Card style={styles.profileCard}>
           <View style={styles.profileRow}>
-            <LinearGradient
-              colors={Colors.gradientOrange}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>
-                {(user?.displayName || "U")[0].toUpperCase()}
-              </Text>
-            </LinearGradient>
+            <UserAvatar
+              userData={userData}
+              name={userData?.name || user?.displayName}
+              size={64}
+              borderRadius={20}
+              gradientColors={Colors.gradientOrange}
+            />
             <View style={styles.profileInfo}>
               <Text style={styles.profileName}>
-                {user?.displayName || "Usuário"}
+                {userData?.name || user?.displayName || "Usuário"}
               </Text>
               <Text style={styles.profileEmail}>{user?.email}</Text>
-              <View style={styles.planBadge}>
-                <Ionicons name="sparkles" size={12} color={Colors.teal} />
-                <Text style={styles.planText}>
-                  {userData?.plan === "trial"
-                    ? "Período de Teste"
-                    : "Plano " + (userData?.plan || "Free")}
-                </Text>
-              </View>
             </View>
           </View>
         </Card>
 
         {/* Menu */}
         <Card>
-          {menuItems.map((item, index) => (
+          {tabItems.map((item) => (
             <TouchableOpacity
-              key={index}
               style={[
                 styles.menuItem,
-                index < menuItems.length - 1 && styles.menuItemBorder,
+                activeTab === item.key && { backgroundColor: item.color + "10" },
+                item.key !== tabItems[tabItems.length - 1]?.key && styles.menuItemBorder,
               ]}
-              onPress={() => item.screen && navigation.navigate(item.screen)}
+              key={item.key}
+              onPress={() => setActiveTab(item.key)}
               activeOpacity={0.6}
             >
               <View
@@ -120,6 +124,68 @@ export default function ProfileScreen({ navigation }) {
               />
             </TouchableOpacity>
           ))}
+        </Card>
+
+        {/* Content */}
+        <Card style={styles.contentCard}>
+          {activeTab === "editProfile" && (
+            <>
+              <Text style={styles.sectionTitle}>Editar Perfil</Text>
+              <Input
+                label="Nome"
+                value={nameDraft}
+                onChangeText={setNameDraft}
+                placeholder="Seu nome"
+                icon="person-outline"
+              />
+              <Button
+                title={savingProfile ? "Salvando..." : "Salvar alterações"}
+                icon="save-outline"
+                loading={savingProfile}
+                onPress={handleSaveProfile}
+                small
+                style={styles.saveBtn}
+              />
+            </>
+          )}
+
+          {activeTab === "notifications" && (
+            <>
+              <Text style={styles.sectionTitle}>Notificações</Text>
+              <View style={styles.rowBetween}>
+                <Text style={styles.rowLabel}>Atualizações importantes</Text>
+                <Switch value={notifyEnabled} onValueChange={setNotifyEnabled} />
+              </View>
+              <Text style={styles.helperText}>
+                (Por enquanto, apenas demonstrativo no app. As preferências podem ser conectadas no próximo ajuste.)
+              </Text>
+            </>
+          )}
+
+          {activeTab === "help" && (
+            <>
+              <Text style={styles.sectionTitle}>Ajuda e Suporte</Text>
+              <Text style={styles.helperText}>
+                Em caso de dúvidas, utilize os canais de suporte disponíveis na próxima versão do sistema.
+              </Text>
+              <TouchableOpacity
+                style={[styles.linkBtn, Shadows.small]}
+                onPress={() => Alert.alert("Suporte", "Canal de suporte não configurado neste momento.")}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={Colors.teal} />
+                <Text style={styles.linkText}>Falar com o suporte</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {activeTab === "terms" && (
+            <>
+              <Text style={styles.sectionTitle}>Termos de Uso</Text>
+              <Text style={styles.termsText}>
+                Este é um conteúdo placeholder para os Termos de Uso do Domus App. Ajuste quando o texto final estiver pronto.
+              </Text>
+            </>
+          )}
         </Card>
 
         {/* Logout */}
@@ -142,29 +208,9 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 100 },
   profileCard: {},
   profileRow: { flexDirection: "row", alignItems: "center" },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: { fontSize: 28, fontWeight: "800", color: Colors.white },
   profileInfo: { marginLeft: 16, flex: 1 },
   profileName: { fontSize: 20, fontWeight: "700", color: Colors.textPrimary },
   profileEmail: { fontSize: 14, color: Colors.textSecondary, marginTop: 2 },
-  planBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: Colors.tealSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-    marginTop: 8,
-  },
-  planText: { fontSize: 12, color: Colors.teal, fontWeight: "600" },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -199,6 +245,25 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   logoutText: { fontSize: 16, fontWeight: "600", color: Colors.error },
+  contentCard: { marginTop: 14, marginBottom: 6, padding: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: "800", color: Colors.textPrimary, marginBottom: 12 },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  rowLabel: { fontSize: 13, color: Colors.textSecondary, fontWeight: "600" },
+  helperText: { fontSize: 12, color: Colors.textSecondary, marginTop: 10, lineHeight: 18 },
+  linkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  linkText: { fontSize: 14, fontWeight: "700", color: Colors.teal },
+  termsText: { fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
+  saveBtn: { marginTop: 10 },
   version: {
     textAlign: "center",
     fontSize: 12,

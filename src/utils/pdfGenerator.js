@@ -123,3 +123,100 @@ export async function generatePayrollPDF(payrollData, employeeInfo, period) {
     return { success: false, error: error.message };
   }
 }
+
+export async function generateEmployeeHoursPDF(employee, summary, days) {
+  const rows = days
+    .map(
+      (day) => `
+      <tr>
+        <td>${day.date}</td>
+        <td style="text-align:right">${day.worked.toFixed(2)}h</td>
+        <td style="text-align:right">${day.overtime.toFixed(2)}h</td>
+      </tr>
+    `,
+    )
+    .join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Helvetica, Arial, sans-serif; padding: 28px; color: #1F2937; }
+        .header {
+          background: linear-gradient(135deg, #3E9C99, #4DB6B3);
+          color: #fff; border-radius: 10px; padding: 18px; margin-bottom: 18px;
+        }
+        .header h1 { font-size: 22px; margin-bottom: 4px; }
+        .meta { display: flex; gap: 10px; margin-bottom: 16px; }
+        .box { flex: 1; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px; }
+        .box .label { font-size: 11px; color: #6B7280; text-transform: uppercase; }
+        .box .value { font-size: 15px; font-weight: 700; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { text-align: left; background: #F3F4F6; padding: 10px; font-size: 12px; }
+        td { border-bottom: 1px solid #E5E7EB; padding: 10px; font-size: 12px; }
+        .footer { margin-top: 18px; font-size: 10px; color: #9CA3AF; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>DOMUS - Relatório Individual</h1>
+        <p>Horas trabalhadas por funcionário</p>
+      </div>
+
+      <div class="meta">
+        <div class="box">
+          <div class="label">Funcionário</div>
+          <div class="value">${employee?.name || "Sem nome"}</div>
+        </div>
+        <div class="box">
+          <div class="label">Função</div>
+          <div class="value">${employee?.role || "Funcionário"}</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="box">
+          <div class="label">Horas trabalhadas</div>
+          <div class="value">${summary.worked.toFixed(2)}h</div>
+        </div>
+        <div class="box">
+          <div class="label">Horas extras</div>
+          <div class="value">${summary.overtime.toFixed(2)}h</div>
+        </div>
+        <div class="box">
+          <div class="label">Dias válidos</div>
+          <div class="value">${summary.days}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th style="text-align:right">Horas</th>
+            <th style="text-align:right">Extras</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="3">Sem registros válidos no período.</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} - DOMUS
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const { uri } = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(uri);
+    return { success: true, uri };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
